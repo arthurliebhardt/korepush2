@@ -40,17 +40,48 @@ heavy lifting and updates status, events, and build logs.
 
 ## Local development
 
-Prerequisites: Node 20+, pnpm 9, Postgres 16, kubectl (only the worker actually
-talks to Kubernetes — the web app can run without it for most pages).
+### Full stack in a local Kubernetes (recommended)
+
+Mirrors the VPS install — Postgres, registry, web, worker, the lot — but on
+your laptop. Works with either [OrbStack](https://orbstack.dev) (enable
+Settings → Kubernetes → ON) or [k3d](https://k3d.io) (`brew install k3d`).
 
 ```sh
+./dev/up.sh
+# … 5 min first time (image build) …
+# ✓ Korepush is up:
+#     http://localhost:8000
+```
+
+Useful sub-commands:
+
+```sh
+./dev/up.sh logs            # tail web + worker
+SKIP_BUILD=1 ./dev/up.sh    # re-apply manifests without rebuilding images
+PORT=9000 ./dev/up.sh       # use a different host port
+./dev/up.sh down            # delete the korepush namespace (keeps cluster)
+./dev/up.sh nuke            # also delete the k3d cluster
+```
+
+### Web app only (fastest iteration)
+
+Run Postgres in Docker and the Next.js dashboard / worker directly with `pnpm
+dev` against it. Hot-reload, no image builds. The worker's K8s calls won't
+have a real cluster to talk to, so the deploy flow won't work — but everything
+else (auth, projects, env vars, domains UI) does.
+
+```sh
+docker run -d --name korepush-pg \
+  -e POSTGRES_USER=korepush -e POSTGRES_PASSWORD=dev -e POSTGRES_DB=korepush \
+  -p 5432:5432 postgres:16-alpine
+
 pnpm install
-cp .env.example .env   # fill in DATABASE_URL, BETTER_AUTH_SECRET, ENCRYPTION_KEY
+cp .env.example .env   # fill secrets (see below)
 pnpm db:migrate
 pnpm dev               # runs web + worker via turbo
 ```
 
-Generate the secrets with:
+Generate the secrets:
 
 ```sh
 node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
