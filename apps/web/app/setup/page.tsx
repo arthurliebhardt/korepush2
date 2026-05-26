@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { isSetupCompleted } from "@/lib/setup";
 import { SetupForm } from "./setup-form";
 
+export const dynamic = "force-dynamic";
+
 export default async function SetupPage() {
   if (await isSetupCompleted()) {
     redirect("/dashboard");

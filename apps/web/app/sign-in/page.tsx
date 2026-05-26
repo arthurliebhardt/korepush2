@@ -3,6 +3,8 @@ import { isSetupCompleted } from "@/lib/setup";
 import { getSession } from "@/lib/session";
 import { SignInForm } from "./sign-in-form";
 
+export const dynamic = "force-dynamic";
+
 export default async function SignInPage() {
   if (!(await isSetupCompleted())) redirect("/setup");
   if (await getSession()) redirect("/dashboard");
