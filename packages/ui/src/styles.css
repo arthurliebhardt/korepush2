@@ -1,0 +1,4 @@
+/* Tailwind v4 surface used by the dashboard. Imports the design tokens once
+ * so consumers don't need to repeat them.
+ */
+@import "tailwindcss";

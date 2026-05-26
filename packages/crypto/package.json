@@ -1,0 +1,20 @@
+{
+  "name": "@korepush/crypto",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@korepush/tsconfig": "workspace:*",
+    "@types/node": "^20.16.10",
+    "typescript": "^5.6.3"
+  }
+}
