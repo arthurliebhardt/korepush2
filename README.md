@@ -58,7 +58,7 @@ node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
 
 ## Install on a VPS
 
-On a fresh Ubuntu 22.04 / 24.04 / Debian 12 VPS, one command:
+On a fresh Ubuntu 22.04 / 24.04 / 26.04 / Debian 12 VPS, one command:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/arthurliebhardt/korepush2/main/installer/install.sh | sudo bash

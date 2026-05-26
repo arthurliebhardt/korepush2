@@ -124,8 +124,8 @@ detect_os() {
   # shellcheck disable=SC1091
   . /etc/os-release
   case "$ID-$VERSION_ID" in
-    ubuntu-22.04|ubuntu-24.04|debian-12) ok "Detected $PRETTY_NAME" ;;
-    *) die "Unsupported OS: $PRETTY_NAME. Supported: Ubuntu 22.04, 24.04, Debian 12." ;;
+    ubuntu-22.04|ubuntu-24.04|ubuntu-26.04|debian-12) ok "Detected $PRETTY_NAME" ;;
+    *) die "Unsupported OS: $PRETTY_NAME. Supported: Ubuntu 22.04, 24.04, 26.04, Debian 12." ;;
   esac
 }
 
