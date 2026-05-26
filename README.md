@@ -94,8 +94,8 @@ curl -fsSL https://raw.githubusercontent.com/arthurliebhardt/korepush2/main/inst
 ```sh
 curl -fsSL https://raw.githubusercontent.com/arthurliebhardt/korepush2/main/installer/install.sh \
   | sudo bash -s -- \
-      --web-image ghcr.io/arthurliebhardt/korepush-web:v1.0.0 \
-      --worker-image ghcr.io/arthurliebhardt/korepush-worker:v1.0.0
+      --web-image ghcr.io/arthurliebhardt/korepush2-web:v1.0.0 \
+      --worker-image ghcr.io/arthurliebhardt/korepush2-worker:v1.0.0
 ```
 
 ### From a local clone (for development on the VPS)

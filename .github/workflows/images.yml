@@ -51,8 +51,11 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          # Image name: ghcr.io/<owner>/korepush-{web,worker} (lowercased by the action).
-          images: ghcr.io/${{ github.repository_owner }}/korepush-${{ matrix.app }}
+          # Image name: ghcr.io/<owner>/<repo>-{web,worker} (lowercased by the action).
+          # Using the repo name as the prefix avoids permission collisions
+          # with packages of the same name owned by the user but linked to a
+          # different repo.
+          images: ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}-${{ matrix.app }}
           tags: |
             type=ref,event=branch
             type=ref,event=tag

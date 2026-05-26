@@ -230,31 +230,32 @@ detect_or_clone_source() {
 try_pull_published_images() {
   if [[ -n "$WEB_IMAGE" && -n "$WORKER_IMAGE" ]]; then return; fi
 
-  local owner=""
+  local owner="" repo=""
   if [[ -d "$SOURCE_DIR/.git" ]]; then
     local origin
     origin="$(git -C "$SOURCE_DIR" remote get-url origin 2>/dev/null || true)"
     # Match https://github.com/owner/repo[.git] or git@github.com:owner/repo[.git]
     if [[ "$origin" =~ github\.com[/:]([^/]+)/([^/.]+)(\.git)?$ ]]; then
       owner="${BASH_REMATCH[1]}"
+      repo="${BASH_REMATCH[2]}"
     fi
   fi
-  if [[ -z "$owner" ]]; then
+  if [[ -z "$owner" || -z "$repo" ]]; then
     log "No GitHub origin detected — will build images from source"
     return
   fi
 
-  # GHCR is lower-case only.
+  # GHCR is lower-case only. Image names match the workflow:
+  # ghcr.io/<owner>/<repo>-{web,worker}.
   local owner_lc="${owner,,}"
-  local web_candidate="ghcr.io/${owner_lc}/korepush-web:${KORE_REF}"
-  local worker_candidate="ghcr.io/${owner_lc}/korepush-worker:${KORE_REF}"
-  # If KORE_REF is 'main', also accept :latest as the canonical tag.
-  if [[ "$KORE_REF" == "main" ]]; then
-    web_candidate="ghcr.io/${owner_lc}/korepush-web:latest"
-    worker_candidate="ghcr.io/${owner_lc}/korepush-worker:latest"
-  fi
+  local repo_lc="${repo,,}"
+  local tag="$KORE_REF"
+  [[ "$KORE_REF" == "main" ]] && tag="latest"
 
-  log "Looking for published images at ghcr.io/${owner_lc}/..."
+  local web_candidate="ghcr.io/${owner_lc}/${repo_lc}-web:${tag}"
+  local worker_candidate="ghcr.io/${owner_lc}/${repo_lc}-worker:${tag}"
+
+  log "Looking for published images at ghcr.io/${owner_lc}/${repo_lc}-{web,worker}:${tag}"
   if k3s ctr images pull "$web_candidate" >/dev/null 2>&1 \
      && k3s ctr images pull "$worker_candidate" >/dev/null 2>&1; then
     WEB_IMAGE="$web_candidate"
