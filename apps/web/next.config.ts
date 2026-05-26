@@ -20,6 +20,20 @@ const config: NextConfig = {
     serverActions: { bodySizeLimit: "1mb" },
   },
   serverExternalPackages: ["postgres", "@kubernetes/client-node"],
+
+  // Our workspace packages import siblings with explicit `.js` suffixes
+  // (NodeNext-style, required by tsx in the worker). webpack doesn't try other
+  // extensions when one is specified, so we teach it that `.js` imports may
+  // actually be `.ts`/`.tsx` source files.
+  webpack: (config) => {
+    config.resolve = config.resolve ?? {};
+    config.resolve.extensionAlias = {
+      ...(config.resolve.extensionAlias ?? {}),
+      ".js": [".ts", ".tsx", ".js"],
+      ".jsx": [".tsx", ".jsx"],
+    };
+    return config;
+  },
 };
 
 export default config;

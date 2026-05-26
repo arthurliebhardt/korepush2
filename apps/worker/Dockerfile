@@ -15,7 +15,7 @@ RUN pnpm install --frozen-lockfile=false
 # package + a real node_modules tree with workspace deps copied in (not
 # symlinks), and devDependencies stripped. This sidesteps the classic
 # pnpm-in-Docker symlink problem.
-RUN pnpm --filter @korepush/worker deploy --prod --legacy /out
+RUN pnpm --filter @korepush/worker deploy --prod /out
 
 # ---- runner ----------------------------------------------------------------
 FROM node:20-alpine AS runner
