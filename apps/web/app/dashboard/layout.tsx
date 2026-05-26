@@ -4,6 +4,9 @@ import { getSession } from "@/lib/session";
 import { isSetupCompleted } from "@/lib/setup";
 import { SignOutButton } from "./sign-out-button";
 
+// All dashboard routes depend on the session + DB state — never static.
+export const dynamic = "force-dynamic";
+
 const nav = [
   { href: "/dashboard", label: "Projects" },
   { href: "/dashboard/clusters", label: "Clusters" },
