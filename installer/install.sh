@@ -45,9 +45,9 @@ WORKER_IMAGE="${WORKER_IMAGE:-}"
 
 DOMAIN=""
 ADMIN_EMAIL=""
-EFFECTIVE_HOST=""   # computed: DOMAIN, or <vps-ip>.sslip.io fallback
-EFFECTIVE_SCHEME="" # http when sslip.io, https when --email + --domain
+WEB_PORT="${WEB_PORT:-8000}"   # host port for direct-IP access (no --domain)
 PUBLIC_IP=""
+PUBLIC_URL=""                  # final URL the dashboard is reachable at
 SKIP_K3S=false
 SKIP_CERT_MANAGER=false
 INSTALL_REGISTRY=true
@@ -75,8 +75,11 @@ Commands:
     --purge            Also remove databases, registry, project namespaces
 
 Install options:
-  --domain HOST        Public dashboard hostname (e.g. panel.example.com)
-  --email ADDR         Admin email (for Let's Encrypt)
+  --domain HOST        Public dashboard hostname (e.g. panel.example.com).
+                       Triggers Ingress on :80/:443 + cert-manager if --email.
+  --email ADDR         Admin email for Let's Encrypt (only with --domain).
+  --port N             Host port for direct-IP access. Default: $WEB_PORT.
+                       Ignored when --domain is set.
   --repo URL           Git repo to build from. Default: $KORE_REPO
   --ref REF            Git ref (branch / tag / sha). Default: $KORE_REF
   --source-dir PATH    Use an existing source checkout (skip git clone)
@@ -88,7 +91,7 @@ Install options:
   --yes, -y            Non-interactive, assume yes
 
 Env var equivalents: KORE_REPO, KORE_REF, KORE_SOURCE_DIR, WEB_IMAGE,
-WORKER_IMAGE, PLATFORM_NAMESPACE.
+WORKER_IMAGE, WEB_PORT, PLATFORM_NAMESPACE.
 EOF
 }
 
@@ -99,6 +102,7 @@ parse_args() {
       --purge) PURGE=true; shift ;;
       --domain) DOMAIN="$2"; shift 2 ;;
       --email) ADMIN_EMAIL="$2"; shift 2 ;;
+      --port) WEB_PORT="$2"; shift 2 ;;
       --repo) KORE_REPO="$2"; shift 2 ;;
       --ref) KORE_REF="$2"; shift 2 ;;
       --source-dir) SOURCE_DIR="$2"; shift 2 ;;
@@ -350,12 +354,12 @@ EOF
 
 random_b64() { openssl rand -base64 "${1:-48}" | tr -d '\n'; }
 
-# Pick the host the dashboard will be reachable at:
-#   --domain <h>             → h, https when --email also given
-#   nothing                  → <vps-ip>.sslip.io over http
-# Coolify-style: works on a bare VPS with no DNS setup.
+# Compute the URL the dashboard will be reachable at.
+#   --domain <h>  → http(s)://h on :80/:443 via Traefik Ingress
+#   no --domain   → http://<vps-ip>:<port> via a LoadBalancer Service
+#                   (K3s' built-in klipper-lb binds the host port directly)
 detect_public_ip() {
-  # Prefer the IP a public resolver sees us as (handles NAT/cloud VPS).
+  # Prefer the IP a public resolver sees us as (handles NAT / cloud VPS).
   PUBLIC_IP="$(curl -fsSL --max-time 4 https://api.ipify.org 2>/dev/null || true)"
   if [[ -z "$PUBLIC_IP" ]]; then
     PUBLIC_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
@@ -363,20 +367,18 @@ detect_public_ip() {
   [[ -n "$PUBLIC_IP" ]] || die "Could not determine public IP. Pass --domain manually."
 }
 
-compute_effective_host() {
+compute_public_url() {
   detect_public_ip
   if [[ -n "$DOMAIN" ]]; then
-    EFFECTIVE_HOST="$DOMAIN"
     if [[ -n "$ADMIN_EMAIL" ]] && ! $SKIP_CERT_MANAGER; then
-      EFFECTIVE_SCHEME="https"
+      PUBLIC_URL="https://${DOMAIN}"
     else
-      EFFECTIVE_SCHEME="http"
+      PUBLIC_URL="http://${DOMAIN}"
     fi
   else
-    EFFECTIVE_HOST="${PUBLIC_IP}.sslip.io"
-    EFFECTIVE_SCHEME="http"
+    PUBLIC_URL="http://${PUBLIC_IP}:${WEB_PORT}"
   fi
-  ok "Dashboard will be served at ${EFFECTIVE_SCHEME}://${EFFECTIVE_HOST}"
+  ok "Dashboard will be served at $PUBLIC_URL"
 }
 
 apply_platform_secrets() {
@@ -399,7 +401,7 @@ apply_platform_secrets() {
     local auth_secret enc_key BAU
     auth_secret="$(random_b64 48)"
     enc_key="$(random_b64 48)"
-    BAU="${EFFECTIVE_SCHEME}://${EFFECTIVE_HOST}"
+    BAU="$PUBLIC_URL"
     local DB_URL="postgres://korepush:${db_pass}@postgres.${PLATFORM_NAMESPACE}.svc.cluster.local:5432/korepush"
     kubectl -n "$PLATFORM_NAMESPACE" create secret generic korepush-app \
       --from-literal=DATABASE_URL="$DB_URL" \
@@ -412,7 +414,7 @@ apply_platform_secrets() {
 
   # Always reconcile BETTER_AUTH_URL — host may change between re-runs
   # (e.g. user added --domain after running once without it).
-  local desired_bau="${EFFECTIVE_SCHEME}://${EFFECTIVE_HOST}"
+  local desired_bau="$PUBLIC_URL"
   local current_bau
   current_bau="$(kubectl -n "$PLATFORM_NAMESPACE" get secret korepush-app \
     -o jsonpath='{.data.BETTER_AUTH_URL}' 2>/dev/null | base64 -d || true)"
@@ -611,13 +613,6 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 10
 ---
-apiVersion: v1
-kind: Service
-metadata: { name: web, namespace: $PLATFORM_NAMESPACE }
-spec:
-  selector: { app.kubernetes.io/name: web }
-  ports: [{ name: http, port: 80, targetPort: 3000 }]
----
 apiVersion: apps/v1
 kind: Deployment
 metadata: { name: worker, namespace: $PLATFORM_NAMESPACE }
@@ -635,17 +630,32 @@ spec:
           envFrom: [{ secretRef: { name: korepush-app } }]
 EOF
 
-  # Always create an Ingress — without one nothing is reachable from outside
-  # the cluster. Host is the effective domain (real domain or <ip>.sslip.io).
-  local issuer_anno=""
-  local tls_block=""
-  if [[ "$EFFECTIVE_SCHEME" == "https" ]]; then
-    issuer_anno=$'    cert-manager.io/cluster-issuer: letsencrypt-prod\n'
-    tls_block="  tls:
-    - hosts: [\"$EFFECTIVE_HOST\"]
+  # Web Service strategy:
+  #   --domain set → ClusterIP + Traefik Ingress on :80/:443
+  #   no --domain  → LoadBalancer on :$WEB_PORT (K3s klipper-lb binds the host port)
+  #
+  # Stale resources from the other mode get cleaned up so re-runs work cleanly.
+  if [[ -n "$DOMAIN" ]]; then
+    kubectl -n "$PLATFORM_NAMESPACE" delete service web --ignore-not-found
+    kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Service
+metadata: { name: web, namespace: $PLATFORM_NAMESPACE }
+spec:
+  type: ClusterIP
+  selector: { app.kubernetes.io/name: web }
+  ports: [{ name: http, port: 80, targetPort: 3000 }]
+EOF
+
+    local issuer_anno=""
+    local tls_block=""
+    if [[ -n "$ADMIN_EMAIL" ]] && ! $SKIP_CERT_MANAGER; then
+      issuer_anno=$'    cert-manager.io/cluster-issuer: letsencrypt-prod\n'
+      tls_block="  tls:
+    - hosts: [\"$DOMAIN\"]
       secretName: korepush-web-tls"
-  fi
-  kubectl apply -f - <<EOF
+    fi
+    kubectl apply -f - <<EOF
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -656,7 +666,7 @@ $issuer_anno    kubernetes.io/ingress.class: $INGRESS_CLASS
 spec:
   ingressClassName: $INGRESS_CLASS
   rules:
-    - host: $EFFECTIVE_HOST
+    - host: $DOMAIN
       http:
         paths:
           - path: /
@@ -665,13 +675,31 @@ spec:
               service: { name: web, port: { number: 80 } }
 $tls_block
 EOF
+  else
+    # Drop any old Ingress + ClusterIP service from a previous --domain run.
+    kubectl -n "$PLATFORM_NAMESPACE" delete ingress web --ignore-not-found
+    kubectl -n "$PLATFORM_NAMESPACE" delete service web --ignore-not-found
+    kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Service
+metadata: { name: web, namespace: $PLATFORM_NAMESPACE }
+spec:
+  type: LoadBalancer
+  selector: { app.kubernetes.io/name: web }
+  ports:
+    - name: http
+      port: $WEB_PORT
+      targetPort: 3000
+      protocol: TCP
+EOF
+  fi
 
   kubectl -n "$PLATFORM_NAMESPACE" rollout status deployment/web    --timeout=180s || true
   kubectl -n "$PLATFORM_NAMESPACE" rollout status deployment/worker --timeout=180s || true
 }
 
 print_summary() {
-  local url="${EFFECTIVE_SCHEME}://${EFFECTIVE_HOST}"
+  local url="$PUBLIC_URL"
   cat <<EOF
 
 ${GREEN}Your Korepush is ready.${OFF}
@@ -706,7 +734,7 @@ cmd_install() {
   detect_or_clone_source
   try_pull_published_images
   build_and_import_images
-  compute_effective_host
+  compute_public_url
   create_namespace
   install_cert_manager
   apply_cluster_issuers
@@ -725,7 +753,7 @@ cmd_update() {
   detect_or_clone_source
   try_pull_published_images
   build_and_import_images
-  compute_effective_host
+  compute_public_url
   apply_migrations_job
   apply_web_and_worker
   ok "Update complete"
