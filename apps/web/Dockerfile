@@ -16,7 +16,16 @@ RUN pnpm install --frozen-lockfile=false
 # Build the dashboard. Next.js produces a self-contained standalone tree
 # under apps/web/.next/standalone because next.config.ts sets
 # outputFileTracingRoot to the monorepo root.
+#
+# Next.js's page-data-collection step executes route module top-level code,
+# which means env-var validation runs at build time. The real values come
+# from the K8s Secret at runtime — these placeholders only have to be
+# non-empty so validation passes.
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV DATABASE_URL=postgres://build:build@localhost:5432/build
+ENV BETTER_AUTH_SECRET=build-time-placeholder-secret-not-used-at-runtime
+ENV BETTER_AUTH_URL=http://localhost:3000
+ENV ENCRYPTION_KEY=build-time-placeholder-key-not-used-at-runtime-xx
 RUN pnpm --filter @korepush/web build
 
 # ---- runner ----------------------------------------------------------------
