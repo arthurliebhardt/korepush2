@@ -45,6 +45,9 @@ WORKER_IMAGE="${WORKER_IMAGE:-}"
 
 DOMAIN=""
 ADMIN_EMAIL=""
+EFFECTIVE_HOST=""   # computed: DOMAIN, or <vps-ip>.sslip.io fallback
+EFFECTIVE_SCHEME="" # http when sslip.io, https when --email + --domain
+PUBLIC_IP=""
 SKIP_K3S=false
 SKIP_CERT_MANAGER=false
 INSTALL_REGISTRY=true
@@ -347,6 +350,35 @@ EOF
 
 random_b64() { openssl rand -base64 "${1:-48}" | tr -d '\n'; }
 
+# Pick the host the dashboard will be reachable at:
+#   --domain <h>             → h, https when --email also given
+#   nothing                  → <vps-ip>.sslip.io over http
+# Coolify-style: works on a bare VPS with no DNS setup.
+detect_public_ip() {
+  # Prefer the IP a public resolver sees us as (handles NAT/cloud VPS).
+  PUBLIC_IP="$(curl -fsSL --max-time 4 https://api.ipify.org 2>/dev/null || true)"
+  if [[ -z "$PUBLIC_IP" ]]; then
+    PUBLIC_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  fi
+  [[ -n "$PUBLIC_IP" ]] || die "Could not determine public IP. Pass --domain manually."
+}
+
+compute_effective_host() {
+  detect_public_ip
+  if [[ -n "$DOMAIN" ]]; then
+    EFFECTIVE_HOST="$DOMAIN"
+    if [[ -n "$ADMIN_EMAIL" ]] && ! $SKIP_CERT_MANAGER; then
+      EFFECTIVE_SCHEME="https"
+    else
+      EFFECTIVE_SCHEME="http"
+    fi
+  else
+    EFFECTIVE_HOST="${PUBLIC_IP}.sslip.io"
+    EFFECTIVE_SCHEME="http"
+  fi
+  ok "Dashboard will be served at ${EFFECTIVE_SCHEME}://${EFFECTIVE_HOST}"
+}
+
 apply_platform_secrets() {
   log "Generating / reusing platform secrets"
   if kubectl -n "$PLATFORM_NAMESPACE" get secret korepush-db >/dev/null 2>&1; then
@@ -367,8 +399,7 @@ apply_platform_secrets() {
     local auth_secret enc_key BAU
     auth_secret="$(random_b64 48)"
     enc_key="$(random_b64 48)"
-    BAU="${DOMAIN:+https://$DOMAIN}"
-    [[ -z "$BAU" ]] && BAU="http://$(hostname -I | awk '{print $1}'):3000"
+    BAU="${EFFECTIVE_SCHEME}://${EFFECTIVE_HOST}"
     local DB_URL="postgres://korepush:${db_pass}@postgres.${PLATFORM_NAMESPACE}.svc.cluster.local:5432/korepush"
     kubectl -n "$PLATFORM_NAMESPACE" create secret generic korepush-app \
       --from-literal=DATABASE_URL="$DB_URL" \
@@ -377,6 +408,20 @@ apply_platform_secrets() {
       --from-literal=ENCRYPTION_KEY="$enc_key" \
       --from-literal=REGISTRY_URL="registry.${PLATFORM_NAMESPACE}.svc.cluster.local:5000" \
       --from-literal=PLATFORM_NAMESPACE="$PLATFORM_NAMESPACE"
+  fi
+
+  # Always reconcile BETTER_AUTH_URL — host may change between re-runs
+  # (e.g. user added --domain after running once without it).
+  local desired_bau="${EFFECTIVE_SCHEME}://${EFFECTIVE_HOST}"
+  local current_bau
+  current_bau="$(kubectl -n "$PLATFORM_NAMESPACE" get secret korepush-app \
+    -o jsonpath='{.data.BETTER_AUTH_URL}' 2>/dev/null | base64 -d || true)"
+  if [[ "$current_bau" != "$desired_bau" ]]; then
+    log "Updating BETTER_AUTH_URL: ${current_bau:-<unset>} → $desired_bau"
+    kubectl -n "$PLATFORM_NAMESPACE" patch secret korepush-app --type merge \
+      -p "{\"stringData\":{\"BETTER_AUTH_URL\":\"$desired_bau\"}}"
+    # Force a web rollout so the new env is picked up.
+    kubectl -n "$PLATFORM_NAMESPACE" rollout restart deployment/web 2>/dev/null || true
   fi
 }
 
@@ -590,16 +635,17 @@ spec:
           envFrom: [{ secretRef: { name: korepush-app } }]
 EOF
 
-  if [[ -n "$DOMAIN" ]]; then
-    local issuer_anno=""
-    local tls_block=""
-    if ! $SKIP_CERT_MANAGER && [[ -n "$ADMIN_EMAIL" ]]; then
-      issuer_anno=$'    cert-manager.io/cluster-issuer: letsencrypt-prod\n'
-      tls_block="  tls:
-    - hosts: [\"$DOMAIN\"]
+  # Always create an Ingress — without one nothing is reachable from outside
+  # the cluster. Host is the effective domain (real domain or <ip>.sslip.io).
+  local issuer_anno=""
+  local tls_block=""
+  if [[ "$EFFECTIVE_SCHEME" == "https" ]]; then
+    issuer_anno=$'    cert-manager.io/cluster-issuer: letsencrypt-prod\n'
+    tls_block="  tls:
+    - hosts: [\"$EFFECTIVE_HOST\"]
       secretName: korepush-web-tls"
-    fi
-    kubectl apply -f - <<EOF
+  fi
+  kubectl apply -f - <<EOF
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -610,7 +656,7 @@ $issuer_anno    kubernetes.io/ingress.class: $INGRESS_CLASS
 spec:
   ingressClassName: $INGRESS_CLASS
   rules:
-    - host: $DOMAIN
+    - host: $EFFECTIVE_HOST
       http:
         paths:
           - path: /
@@ -619,15 +665,13 @@ spec:
               service: { name: web, port: { number: 80 } }
 $tls_block
 EOF
-  fi
 
   kubectl -n "$PLATFORM_NAMESPACE" rollout status deployment/web    --timeout=180s || true
   kubectl -n "$PLATFORM_NAMESPACE" rollout status deployment/worker --timeout=180s || true
 }
 
 print_summary() {
-  local url="http://$(hostname -I | awk '{print $1}'):3000"
-  [[ -n "$DOMAIN" ]] && url="https://$DOMAIN"
+  local url="${EFFECTIVE_SCHEME}://${EFFECTIVE_HOST}"
   cat <<EOF
 
 ${GREEN}Your Korepush is ready.${OFF}
@@ -662,6 +706,7 @@ cmd_install() {
   detect_or_clone_source
   try_pull_published_images
   build_and_import_images
+  compute_effective_host
   create_namespace
   install_cert_manager
   apply_cluster_issuers
@@ -680,6 +725,7 @@ cmd_update() {
   detect_or_clone_source
   try_pull_published_images
   build_and_import_images
+  compute_effective_host
   apply_migrations_job
   apply_web_and_worker
   ok "Update complete"
