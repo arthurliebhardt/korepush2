@@ -118,22 +118,26 @@ create_vm() {
 
 vm_ip() {
   case "$RUNTIME" in
-    orb)       orb -m "$VM_NAME" -u root -- hostname -I 2>/dev/null | awk '{print $1}' ;;
+    # OrbStack gives every machine a stable hostname <name>.orb.local that
+    # resolves from the host. Using the internal hostname -I IP would only
+    # work from inside the VM — host can't reach it on arbitrary ports.
+    orb)       echo "${VM_NAME}.orb.local" ;;
     multipass) multipass exec "$VM_NAME" -- hostname -I 2>/dev/null | awk '{print $1}' ;;
   esac
 }
 
-wait_for_vm_ip() {
-  log "Waiting for VM networking"
-  local ip="" tries=0
-  while [[ -z "$ip" && $tries -lt 30 ]]; do
-    ip="$(vm_ip || true)"
-    [[ -n "$ip" ]] && break
+wait_for_vm_ready() {
+  log "Waiting for VM to be ready"
+  local tries=0
+  while [[ $tries -lt 30 ]]; do
+    if run_in_vm 'echo ready' >/dev/null 2>&1; then
+      ok "VM is responsive"
+      return 0
+    fi
     sleep 1
     tries=$((tries+1))
   done
-  [[ -n "$ip" ]] || die "VM didn't get an IP after 30s"
-  echo "$ip"
+  die "VM not responsive after 30s"
 }
 
 run_in_vm() {
@@ -215,8 +219,10 @@ main() {
   parse_args "$@"
   detect_runtime
   create_vm
-  VM_IP="$(wait_for_vm_ip)"
-  ok "VM IP: $VM_IP"
+  wait_for_vm_ready
+  VM_IP="$(vm_ip)"
+  [[ -n "$VM_IP" ]] || die "Could not resolve VM address"
+  ok "VM reachable at: $VM_IP"
   trap on_exit EXIT
 
   run_installer
