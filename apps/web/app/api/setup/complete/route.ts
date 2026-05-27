@@ -44,31 +44,20 @@ export async function POST(req: Request) {
   }
   const { email, password, name } = parsed.data;
 
-  // Create the Owner account via Better Auth so password hashing matches the
-  // rest of the auth flow.
+  // Create the Owner account via Better Auth so the password hash format
+  // matches what the sign-in path expects to verify against.
   let userId: string;
   try {
     const signUp = await auth.api.signUpEmail({
       body: { email, password, name: name ?? email.split("@")[0]! },
     });
     userId = signUp.user.id;
-  } catch {
-    // Better Auth may refuse if disableSignUp is on; fall back to direct insert
-    // using the same scrypt format Better Auth uses for credential accounts.
-    userId = newId("usr");
-    await db.insert(schema.user).values({
-      id: userId,
-      name: name ?? email.split("@")[0]!,
-      email,
-      emailVerified: true,
-    });
-    await db.insert(schema.account).values({
-      id: newId("acc"),
-      userId,
-      accountId: email,
-      providerId: "credential",
-      password: await scryptHashCompat(password),
-    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return NextResponse.json(
+      { error: `failed to create owner account: ${msg}` },
+      { status: 500 },
+    );
   }
 
   const teamId = newId("team");
@@ -104,11 +93,4 @@ export async function POST(req: Request) {
   await markSetupCompleted();
 
   return NextResponse.json({ ok: true });
-}
-
-async function scryptHashCompat(password: string): Promise<string> {
-  const { scryptSync, randomBytes } = await import("node:crypto");
-  const salt = randomBytes(16);
-  const hash = scryptSync(password, salt, 64);
-  return `scrypt$${salt.toString("hex")}$${hash.toString("hex")}`;
 }
