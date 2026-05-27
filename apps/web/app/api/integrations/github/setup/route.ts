@@ -35,8 +35,12 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const org = url.searchParams.get("org") ?? undefined;
 
+  // GitHub App names must be globally unique. Append a short random suffix so
+  // multiple Korepush instances (or retries after a failed Create) never
+  // collide. Operators can still override the base name via the APP_NAME env.
+  const suffix = randomBytes(3).toString("hex"); // 6 lowercase hex chars
   const manifest = buildAppManifest({
-    name: env.appName,
+    name: `${env.appName} ${suffix}`,
     baseUrl: env.betterAuthUrl,
   });
   const state = randomBytes(24).toString("base64url");
