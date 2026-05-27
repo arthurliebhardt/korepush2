@@ -9,4 +9,5 @@ export * from "./domains.js";
 export * from "./env-vars.js";
 export * from "./jobs.js";
 export * from "./k8s-resources.js";
+export * from "./git-integrations.js";
 export * from "./relations.js";

@@ -24,4 +24,8 @@ export const env = {
   registryUrl: process.env.REGISTRY_URL ?? "registry.korepush-system.svc.cluster.local:5000",
   platformBaseDomain: process.env.PLATFORM_BASE_DOMAIN ?? null,
   platformNamespace: process.env.PLATFORM_NAMESPACE ?? "korepush-system",
+  // Display name for the GitHub App we create on the operator's behalf.
+  // Must be unique on GitHub — set APP_NAME if you run multiple instances
+  // for the same GitHub account.
+  appName: process.env.APP_NAME ?? "Korepush",
 };

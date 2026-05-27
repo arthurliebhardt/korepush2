@@ -8,6 +8,13 @@
       "when": 1779822331158,
       "tag": "0000_vengeful_quentin_quire",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1779911203975,
+      "tag": "0001_open_magma",
+      "breakpoints": true
     }
   ]
 }

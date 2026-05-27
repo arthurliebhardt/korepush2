@@ -9,6 +9,7 @@ import { domains } from "./domains.js";
 import { envVars } from "./env-vars.js";
 import { jobs, jobEvents } from "./jobs.js";
 import { k8sResources } from "./k8s-resources.js";
+import { gitIntegrations } from "./git-integrations.js";
 
 export const userRelations = relations(user, ({ many }) => ({
   memberships: many(teamMembers),
@@ -18,6 +19,12 @@ export const teamsRelations = relations(teams, ({ many }) => ({
   members: many(teamMembers),
   clusters: many(clusters),
   projects: many(projects),
+  gitIntegrations: many(gitIntegrations),
+}));
+
+export const gitIntegrationsRelations = relations(gitIntegrations, ({ one }) => ({
+  team: one(teams, { fields: [gitIntegrations.teamId], references: [teams.id] }),
+  createdBy: one(user, { fields: [gitIntegrations.createdByUserId], references: [user.id] }),
 }));
 
 export const teamMembersRelations = relations(teamMembers, ({ one }) => ({

@@ -10,6 +10,7 @@ export const dynamic = "force-dynamic";
 const nav = [
   { href: "/dashboard", label: "Projects" },
   { href: "/dashboard/clusters", label: "Clusters" },
+  { href: "/dashboard/settings/integrations", label: "Settings" },
 ];
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
