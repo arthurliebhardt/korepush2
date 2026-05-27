@@ -63,6 +63,19 @@ PORT=9000 ./dev/up.sh       # use a different host port
 ./dev/up.sh nuke            # also delete the k3d cluster
 ```
 
+### End-to-end test of the VPS installer
+
+`dev/test-installer.sh` spawns a fresh `ubuntu:24.04` microVM (OrbStack or
+multipass), runs the live `curl … | sudo bash` install in it, and polls the
+dashboard until it answers — then tears the VM down. Catches any regression
+in the install path on a clean OS.
+
+```sh
+./dev/test-installer.sh           # spin up, install, verify, destroy
+./dev/test-installer.sh --keep    # leave the VM around for debugging
+./dev/test-installer.sh --ref my-branch   # test a specific ref of the installer
+```
+
 ### Web app only (fastest iteration)
 
 Run Postgres in Docker and the Next.js dashboard / worker directly with `pnpm
