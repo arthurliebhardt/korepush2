@@ -22,8 +22,12 @@ export interface BuildJobArgs {
   labels: LabelInput;
   /** Optional Secret with a docker-config.json key for registry auth. */
   registrySecretName?: string;
-  /** Optional Secret with Git credentials (ssh key or token). Not used in MVP. */
-  gitSecretName?: string;
+  /**
+   * Optional Secret with a Git access token under key `token`. When set, the
+   * init container injects it into the clone URL as
+   * `https://x-access-token:<token>@github.com/...`, enabling private clones.
+   */
+  gitTokenSecretName?: string;
 }
 
 const WORKSPACE = "/workspace";
@@ -39,26 +43,60 @@ export function buildJobManifest(args: BuildJobArgs) {
   const absContext = posix.join(REPO_DIR, contextDir);
   const absDockerfileDir = posix.join(REPO_DIR, dockerfileDir === "." ? "" : dockerfileDir);
 
-  const initContainers = [
+  // The init container clones the repo. When gitTokenSecretName is set, the
+  // GIT_TOKEN env var is injected from the Secret; the script then rewrites
+  // the URL to authenticate with x-access-token. URL rewriting happens in
+  // pure bash (no exec) so the token never appears in `ps`.
+  type EnvVar = {
+    name: string;
+    value?: string;
+    valueFrom?: { secretKeyRef: { name: string; key: string } };
+  };
+  const initEnv: EnvVar[] = [];
+  if (args.gitTokenSecretName) {
+    initEnv.push({
+      name: "GIT_TOKEN",
+      valueFrom: {
+        secretKeyRef: { name: args.gitTokenSecretName, key: "token" },
+      },
+    });
+  }
+
+  const cloneScript = [
+    `set -eu`,
+    `mkdir -p ${REPO_DIR}`,
+    `cd ${REPO_DIR}`,
+    `URL="${escapeShell(args.gitRepoUrl)}"`,
+    // Inject token into HTTPS URLs only. SSH URLs would need a deploy key
+    // (not implemented yet).
+    `if [ -n "\${GIT_TOKEN:-}" ] && [ "\${URL#https://}" != "\$URL" ]; then`,
+    `  URL="https://x-access-token:\${GIT_TOKEN}@\${URL#https://}"`,
+    `fi`,
+    `git init -q`,
+    `git remote add origin "\$URL"`,
+    `git fetch --depth 50 origin "${escapeShell(args.gitRef)}"`,
+    args.commitSha
+      ? `git checkout -q "${escapeShell(args.commitSha)}"`
+      : `git checkout -q FETCH_HEAD`,
+    // Make the workspace readable by the rootless buildkit user (uid 1000).
+    `chown -R 1000:1000 ${WORKSPACE}`,
+  ].join("\n");
+
+  type InitContainer = {
+    name: string;
+    image: string;
+    command: string[];
+    args: string[];
+    env: typeof initEnv;
+    volumeMounts: Array<{ name: string; mountPath: string }>;
+  };
+  const initContainers: InitContainer[] = [
     {
       name: "git-clone",
       image: "alpine/git:2.45.2",
       command: ["/bin/sh", "-c"],
-      args: [
-        [
-          `set -eu`,
-          `mkdir -p ${REPO_DIR}`,
-          `cd ${REPO_DIR}`,
-          `git init -q`,
-          `git remote add origin "${escapeShell(args.gitRepoUrl)}"`,
-          `git fetch --depth 50 origin "${escapeShell(args.gitRef)}"`,
-          args.commitSha
-            ? `git checkout -q "${escapeShell(args.commitSha)}"`
-            : `git checkout -q FETCH_HEAD`,
-          // Make the workspace readable by the rootless buildkit user (uid 1000).
-          `chown -R 1000:1000 ${WORKSPACE}`,
-        ].join(" && "),
-      ],
+      args: [cloneScript],
+      env: initEnv,
       volumeMounts: [{ name: "workspace", mountPath: WORKSPACE }],
     },
   ];

@@ -38,12 +38,14 @@ import {
 import { collectJobLogs } from "../k8s/logs.js";
 import { waitForRollout } from "../k8s/rollout.js";
 import { trackResource } from "../k8s/apply.js";
+import { applyEnvSecret as applySecret } from "../k8s/secret.js";
 import {
   appendBuildLogs,
   recordEvent,
   setStatus,
   updateDeployment,
 } from "../deployment-store.js";
+import { getGithubInstallationToken } from "../git.js";
 import { log as rootLog } from "../log.js";
 
 export async function deployProject(payload: DeployProjectPayload): Promise<void> {
@@ -111,7 +113,31 @@ export async function deployProject(payload: DeployProjectPayload): Promise<void
     { db, clusterId: cluster.id, projectId: project.id, environmentId: environment.id, deploymentId: deployment.id },
   );
 
-  // 4. Run the build Job and wait for it.
+  // 4a. If this project's repo is on GitHub and the team has a GitHub App
+  // integration installed, mint a short-lived installation token and stash
+  // it in a per-project Secret so the build's init container can clone
+  // private repos. Token is valid for ~1h, well over the build timeout.
+  const gitTokenSecretName = await ensureGitTokenSecret(k, {
+    teamId: project.teamId,
+    namespace,
+    projectSlug: project.slug,
+    repoUrl: project.gitRepoUrl,
+    labels,
+    deploymentId: deployment.id,
+    clusterId: cluster.id,
+    projectId: project.id,
+    environmentId: environment.id,
+  });
+  if (gitTokenSecretName) {
+    await recordEvent(
+      db,
+      deployment.id,
+      "build.git_token_minted",
+      `Using GitHub App installation token for private clone`,
+    );
+  }
+
+  // 4b. Run the build Job and wait for it.
   const imageRepo = imageRepository(env.registryUrl, project.slug);
   const tag = imageTag(deployment.id);
   const fullImage = `${imageRepo}:${tag}`;
@@ -129,6 +155,7 @@ export async function deployProject(payload: DeployProjectPayload): Promise<void
     imageDestinations: [fullImage],
     registryInsecure: env.registryUrl.includes(".svc.cluster.local"),
     labels: buildLabels,
+    gitTokenSecretName: gitTokenSecretName ?? undefined,
   });
   await createBuildJob(k, manifest);
   await trackResource(manifest as never, {
@@ -313,5 +340,82 @@ async function failDeployment(deploymentId: string, eventType: string, reason: s
 function commonLabelsObject(input: LabelInput): Record<string, string> {
   return commonLabels(input);
 }
+
+/**
+ * If the project's repo is on GitHub and the team has an installed GitHub
+ * App integration, mint a fresh installation token and write it into a
+ * per-project Secret in the build namespace. Returns the Secret name (for
+ * the build Job to consume) or null when no integration applies.
+ *
+ * The token is short-lived (~1h) but we refresh on every deploy so each
+ * build sees a fresh one. Tokens never leave the cluster.
+ */
+async function ensureGitTokenSecret(
+  k: ReturnType<typeof apis>,
+  args: {
+    teamId: string;
+    namespace: string;
+    projectSlug: string;
+    repoUrl: string;
+    labels: LabelInput;
+    deploymentId: string;
+    clusterId: string;
+    projectId: string;
+    environmentId: string;
+  },
+): Promise<string | null> {
+  // Cheap check: only attempt token minting for github.com URLs.
+  if (!/github\.com[/:]/i.test(args.repoUrl)) return null;
+
+  const integration = await db.query.gitIntegrations.findFirst({
+    where: and(
+      eq(schema.gitIntegrations.teamId, args.teamId),
+      eq(schema.gitIntegrations.provider, "github"),
+    ),
+  });
+  if (
+    !integration?.installationId ||
+    !integration.appId ||
+    !integration.privateKeyEncrypted
+  ) {
+    return null;
+  }
+
+  const privateKey = decrypt(integration.privateKeyEncrypted, env.encryptionKey);
+  const token = await getGithubInstallationToken({
+    appId: integration.appId,
+    privateKeyPem: privateKey,
+    installationId: integration.installationId,
+  });
+
+  const secretName = `${args.projectSlug}-git-token`;
+  await applySecret(k, {
+    namespace: args.namespace,
+    name: secretName,
+    data: { token },
+    labels: { ...args.labels, component: "build" as const },
+  });
+  await trackResource(
+    {
+      apiVersion: "v1",
+      kind: "Secret",
+      metadata: {
+        name: secretName,
+        namespace: args.namespace,
+        labels: commonLabelsObject({ ...args.labels, component: "build" as const }),
+      },
+      type: "Opaque",
+    },
+    {
+      db,
+      clusterId: args.clusterId,
+      projectId: args.projectId,
+      environmentId: args.environmentId,
+      deploymentId: args.deploymentId,
+    },
+  );
+  return secretName;
+}
+
 // Make sure typing requires the imported `and` is not removed.
 void and;
