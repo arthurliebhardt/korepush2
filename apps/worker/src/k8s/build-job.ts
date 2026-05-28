@@ -28,10 +28,16 @@ export interface BuildJobArgs {
    * `https://x-access-token:<token>@github.com/...`, enabling private clones.
    */
   gitTokenSecretName?: string;
+  /** dockerfile | nixpacks. In nixpacks mode a prep init container generates
+   * the Dockerfile and the user's dockerfilePath is ignored. */
+  buildMode: "dockerfile" | "nixpacks";
+  /** Image containing the nixpacks binary; required when buildMode=nixpacks. */
+  nixpacksImage?: string;
 }
 
 const WORKSPACE = "/workspace";
 const REPO_DIR = `${WORKSPACE}/repo`;
+const NIXPACKS_OUT_DIR = `${REPO_DIR}/.nixpacks`;
 
 export function buildJobManifest(args: BuildJobArgs) {
   const labels = commonLabels(args.labels);
@@ -99,6 +105,29 @@ export function buildJobManifest(args: BuildJobArgs) {
     },
   ];
 
+  if (args.buildMode === "nixpacks") {
+    if (!args.nixpacksImage) {
+      throw new Error("nixpacksImage is required when buildMode is nixpacks");
+    }
+    // Generate a Dockerfile from the cloned repo. `--out` makes nixpacks write
+    // the Dockerfile + build assets without running a docker build. Runs as
+    // uid 1000 (pod securityContext); repo is already 1000-owned by git-clone.
+    const nixpacksScript = [
+      `set -eu`,
+      `cd ${REPO_DIR}`,
+      `nixpacks build ${REPO_DIR} --out ${REPO_DIR}`,
+      `test -f ${NIXPACKS_OUT_DIR}/Dockerfile`,
+    ].join("\n");
+    initContainers.push({
+      name: "nixpacks-prep",
+      image: args.nixpacksImage,
+      command: ["/bin/sh", "-c"],
+      args: [nixpacksScript],
+      env: [],
+      volumeMounts: [{ name: "workspace", mountPath: WORKSPACE }],
+    });
+  }
+
   // Build the BuildKit `--output` spec. Multiple destinations are encoded as
   // a comma-separated `name=` list inside the same output, with `push=true`.
   const outputSpec = [
@@ -108,12 +137,21 @@ export function buildJobManifest(args: BuildJobArgs) {
     ...(args.registryInsecure ? ["registry.insecure=true"] : []),
   ].join(",");
 
+  // In nixpacks mode, ignore the user's dockerfilePath and build the generated
+  // Dockerfile. The context stays the repo root so the generated Dockerfile's
+  // relative COPYs resolve.
+  const effContext = args.buildMode === "nixpacks" ? REPO_DIR : absContext;
+  const effDockerfileDir =
+    args.buildMode === "nixpacks" ? NIXPACKS_OUT_DIR : absDockerfileDir;
+  const effDockerfileName =
+    args.buildMode === "nixpacks" ? "Dockerfile" : dockerfileName;
+
   const buildctlArgs = [
     "build",
     "--frontend", "dockerfile.v0",
-    "--local", `context=${absContext}`,
-    "--local", `dockerfile=${absDockerfileDir}`,
-    "--opt", `filename=${dockerfileName}`,
+    "--local", `context=${effContext}`,
+    "--local", `dockerfile=${effDockerfileDir}`,
+    "--opt", `filename=${effDockerfileName}`,
     "--output", outputSpec,
     "--progress", "plain",
   ];
