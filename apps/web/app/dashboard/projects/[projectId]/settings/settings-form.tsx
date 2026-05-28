@@ -7,6 +7,7 @@ import { Button, Input, Label } from "@korepush/ui";
 interface Initial {
   name: string;
   defaultBranch: string;
+  buildMode: "dockerfile" | "nixpacks";
   dockerfilePath: string;
   buildContext: string;
   port: number;
@@ -34,6 +35,7 @@ export function ProjectSettingsForm({
       body: JSON.stringify({
         name: state.name,
         defaultBranch: state.defaultBranch,
+        buildMode: state.buildMode,
         dockerfilePath: state.dockerfilePath,
         buildContext: state.buildContext,
         port: Number(state.port),
@@ -56,12 +58,32 @@ export function ProjectSettingsForm({
           onChange={(e) => setState({ ...state, defaultBranch: e.target.value })}
         />
       </Pair>
-      <Pair label="Dockerfile path">
-        <Input
-          value={state.dockerfilePath}
-          onChange={(e) => setState({ ...state, dockerfilePath: e.target.value })}
-        />
+      <Pair label="Build">
+        <div className="flex gap-1">
+          <button
+            type="button"
+            onClick={() => setState({ ...state, buildMode: "dockerfile" })}
+            className={btn(state.buildMode === "dockerfile")}
+          >
+            Dockerfile
+          </button>
+          <button
+            type="button"
+            onClick={() => setState({ ...state, buildMode: "nixpacks" })}
+            className={btn(state.buildMode === "nixpacks")}
+          >
+            Nixpacks
+          </button>
+        </div>
       </Pair>
+      {state.buildMode === "dockerfile" ? (
+        <Pair label="Dockerfile path">
+          <Input
+            value={state.dockerfilePath}
+            onChange={(e) => setState({ ...state, dockerfilePath: e.target.value })}
+          />
+        </Pair>
+      ) : null}
       <Pair label="Build context">
         <Input
           value={state.buildContext}
@@ -91,5 +113,14 @@ function Pair({ label, children }: { label: string; children: React.ReactNode })
       <Label>{label}</Label>
       <div>{children}</div>
     </div>
+  );
+}
+
+function btn(active: boolean): string {
+  return (
+    "px-3 py-1.5 text-sm rounded-md border " +
+    (active
+      ? "border-zinc-900 dark:border-zinc-100 bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+      : "border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-900")
   );
 }

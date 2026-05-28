@@ -23,6 +23,7 @@ export default async function SettingsPage({
             initial={{
               name: project.name,
               defaultBranch: project.gitDefaultBranch,
+              buildMode: project.buildMode as "dockerfile" | "nixpacks",
               dockerfilePath: project.dockerfilePath,
               buildContext: project.buildContext,
               port: project.port,
