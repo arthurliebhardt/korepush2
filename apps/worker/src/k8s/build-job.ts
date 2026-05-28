@@ -28,16 +28,18 @@ export interface BuildJobArgs {
    * `https://x-access-token:<token>@github.com/...`, enabling private clones.
    */
   gitTokenSecretName?: string;
-  /** dockerfile | nixpacks. In nixpacks mode a prep init container generates
-   * the Dockerfile and the user's dockerfilePath is ignored. */
+  /** dockerfile | railpack. In railpack mode a prep init container generates a
+   * build plan and the user's dockerfilePath is ignored. */
   buildMode: BuildMode;
-  /** Image containing the nixpacks binary; required when buildMode=nixpacks. */
-  nixpacksImage?: string;
+  /** Railpack CLI image (runs `railpack prepare`); required when buildMode=railpack. */
+  railpackImage?: string;
+  /** Railpack BuildKit gateway frontend image; required when buildMode=railpack. */
+  railpackFrontendImage?: string;
 }
 
 const WORKSPACE = "/workspace";
 const REPO_DIR = `${WORKSPACE}/repo`;
-const NIXPACKS_OUT_DIR = `${REPO_DIR}/.nixpacks`;
+const RAILPACK_PLAN = `${REPO_DIR}/railpack-plan.json`;
 
 export function buildJobManifest(args: BuildJobArgs) {
   const labels = commonLabels(args.labels);
@@ -105,24 +107,27 @@ export function buildJobManifest(args: BuildJobArgs) {
     },
   ];
 
-  if (args.buildMode === "nixpacks") {
-    if (!args.nixpacksImage) {
-      throw new Error("nixpacksImage is required when buildMode is nixpacks");
+  if (args.buildMode === "railpack") {
+    if (!args.railpackImage || !args.railpackFrontendImage) {
+      throw new Error(
+        "railpackImage and railpackFrontendImage are required when buildMode is railpack",
+      );
     }
-    // Generate a Dockerfile from the cloned repo. `--out` makes nixpacks write
-    // the Dockerfile + build assets without running a docker build. Runs as
-    // uid 1000 (pod securityContext); repo is already 1000-owned by git-clone.
-    const nixpacksScript = [
+    // Generate a Railpack build plan from the cloned repo. `railpack prepare`
+    // writes the plan only (no Docker build); the builder consumes it via the
+    // gateway frontend. Runs as uid 1000 (pod securityContext); repo is already
+    // 1000-owned by git-clone.
+    const railpackScript = [
       `set -eu`,
       `cd ${REPO_DIR}`,
-      `nixpacks build ${REPO_DIR} --out ${REPO_DIR}`,
-      `test -f ${NIXPACKS_OUT_DIR}/Dockerfile`,
+      `railpack prepare ${REPO_DIR} --plan-out ${RAILPACK_PLAN}`,
+      `test -f ${RAILPACK_PLAN}`,
     ].join("\n");
     initContainers.push({
-      name: "nixpacks-prep",
-      image: args.nixpacksImage,
+      name: "railpack-prep",
+      image: args.railpackImage,
       command: ["/bin/sh", "-c"],
-      args: [nixpacksScript],
+      args: [railpackScript],
       env: [],
       volumeMounts: [{ name: "workspace", mountPath: WORKSPACE }],
     });
@@ -137,21 +142,21 @@ export function buildJobManifest(args: BuildJobArgs) {
     ...(args.registryInsecure ? ["registry.insecure=true"] : []),
   ].join(",");
 
-  // In nixpacks mode, ignore the user's dockerfilePath and build the generated
-  // Dockerfile. The context stays the repo root so the generated Dockerfile's
-  // relative COPYs resolve.
-  const effContext = args.buildMode === "nixpacks" ? REPO_DIR : absContext;
-  const effDockerfileDir =
-    args.buildMode === "nixpacks" ? NIXPACKS_OUT_DIR : absDockerfileDir;
-  const effDockerfileName =
-    args.buildMode === "nixpacks" ? "Dockerfile" : dockerfileName;
+  // In railpack mode, build the generated plan via the gateway frontend with
+  // the repo root as context (so the plan's relative paths resolve). Otherwise
+  // use the built-in dockerfile frontend with the user's dockerfilePath.
+  const isRailpack = args.buildMode === "railpack";
+  const effContext = isRailpack ? REPO_DIR : absContext;
+  const effDockerfileDir = isRailpack ? REPO_DIR : absDockerfileDir;
+  const effFilename = isRailpack ? "railpack-plan.json" : dockerfileName;
 
   const buildctlArgs = [
     "build",
-    "--frontend", "dockerfile.v0",
+    "--frontend", isRailpack ? "gateway.v0" : "dockerfile.v0",
+    ...(isRailpack ? ["--opt", `source=${args.railpackFrontendImage}`] : []),
     "--local", `context=${effContext}`,
     "--local", `dockerfile=${effDockerfileDir}`,
-    "--opt", `filename=${effDockerfileName}`,
+    "--opt", `filename=${effFilename}`,
     "--output", outputSpec,
     "--progress", "plain",
   ];
