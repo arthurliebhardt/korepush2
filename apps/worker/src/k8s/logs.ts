@@ -1,5 +1,5 @@
 import type { Apis } from "./client.js";
-import { isNotFound } from "./apply.js";
+import { isNotFound, isBadRequest } from "./apply.js";
 
 /**
  * Stream logs from the first matching pod for a job (label selector
@@ -43,7 +43,9 @@ export async function collectJobLogs(
     });
     return typeof text === "string" ? text : "";
   } catch (err) {
-    if (isNotFound(err)) return "";
+    // Container may not have started (e.g. an earlier init container failed) or
+    // the pod may be gone. Treat as "no logs" rather than failing the deploy.
+    if (isNotFound(err) || isBadRequest(err)) return "";
     throw err;
   }
 }

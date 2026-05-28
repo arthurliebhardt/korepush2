@@ -109,6 +109,11 @@ export function isNotFound(err: unknown): boolean {
   return e?.code === 404 || e?.statusCode === 404 || e?.response?.statusCode === 404;
 }
 
+export function isBadRequest(err: unknown): boolean {
+  const e = err as { code?: number; statusCode?: number; response?: { statusCode?: number } };
+  return e?.code === 400 || e?.statusCode === 400 || e?.response?.statusCode === 400;
+}
+
 export function isConflict(err: unknown): boolean {
   const e = err as { code?: number; statusCode?: number; response?: { statusCode?: number } };
   return e?.code === 409 || e?.statusCode === 409 || e?.response?.statusCode === 409;
