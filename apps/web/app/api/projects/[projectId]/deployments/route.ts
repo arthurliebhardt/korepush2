@@ -79,6 +79,7 @@ export async function POST(req: Request, { params }: Params) {
     dockerfilePath: ctx.project.dockerfilePath,
     buildContext: ctx.project.buildContext,
     buildTarget: ctx.project.buildTarget,
+    buildMode: ctx.project.buildMode,
     createdByUserId: ctx.session.user.id,
   });
 

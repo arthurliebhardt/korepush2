@@ -22,6 +22,7 @@ const Create = z.object({
   dockerfilePath: z.string().min(1).default("Dockerfile"),
   buildContext: z.string().min(1).default("."),
   buildTarget: z.string().optional(),
+  buildMode: z.enum(["dockerfile", "nixpacks"]).default("dockerfile"),
   port: z.number().int().min(1).max(65535).default(3000),
   clusterId: z.string().optional(),
 });
@@ -84,7 +85,7 @@ export async function POST(req: Request) {
   const input = parsed.data;
 
   try {
-    validateDockerfilePath(input.dockerfilePath);
+    if (input.buildMode === "dockerfile") validateDockerfilePath(input.dockerfilePath);
     validateBuildContext(input.buildContext);
   } catch (err) {
     return NextResponse.json({ error: errorMessage(err) }, { status: 400 });
@@ -121,7 +122,7 @@ export async function POST(req: Request) {
       gitProvider: detectProvider(input.repoUrl),
       gitRepoUrl: input.repoUrl,
       gitDefaultBranch: input.defaultBranch,
-      buildMode: "dockerfile",
+      buildMode: input.buildMode,
       dockerfilePath: input.dockerfilePath,
       buildContext: input.buildContext,
       buildTarget: input.buildTarget ?? null,

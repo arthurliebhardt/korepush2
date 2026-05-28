@@ -13,6 +13,7 @@ const Update = z.object({
   dockerfilePath: z.string().min(1).optional(),
   buildContext: z.string().min(1).optional(),
   buildTarget: z.string().nullable().optional(),
+  buildMode: z.enum(["dockerfile", "nixpacks"]).optional(),
   port: z.number().int().min(1).max(65535).optional(),
 });
 
@@ -44,7 +45,8 @@ export async function PATCH(req: Request, { params }: Params) {
 
   const u = parsed.data;
   try {
-    if (u.dockerfilePath) validateDockerfilePath(u.dockerfilePath);
+    const effMode = u.buildMode ?? ctx.project.buildMode;
+    if (effMode === "dockerfile" && u.dockerfilePath) validateDockerfilePath(u.dockerfilePath);
     if (u.buildContext) validateBuildContext(u.buildContext);
   } catch (err) {
     return NextResponse.json({ error: msg(err) }, { status: 400 });
@@ -58,6 +60,7 @@ export async function PATCH(req: Request, { params }: Params) {
       ...(u.dockerfilePath !== undefined ? { dockerfilePath: u.dockerfilePath } : {}),
       ...(u.buildContext !== undefined ? { buildContext: u.buildContext } : {}),
       ...(u.buildTarget !== undefined ? { buildTarget: u.buildTarget } : {}),
+      ...(u.buildMode !== undefined ? { buildMode: u.buildMode } : {}),
       ...(u.port !== undefined ? { port: u.port } : {}),
       updatedAt: new Date(),
     })
