@@ -1,4 +1,5 @@
 import type {
+  BUILD_MODES,
   CLUSTER_STATUSES,
   DEPLOYMENT_SOURCES,
   DEPLOYMENT_STATUSES,
@@ -10,6 +11,7 @@ import type {
   TEAM_ROLES,
 } from "./constants.js";
 
+export type BuildMode = (typeof BUILD_MODES)[number];
 export type DeploymentStatus = (typeof DEPLOYMENT_STATUSES)[number];
 export type DeploymentSource = (typeof DEPLOYMENT_SOURCES)[number];
 export type JobStatus = (typeof JOB_STATUSES)[number];
