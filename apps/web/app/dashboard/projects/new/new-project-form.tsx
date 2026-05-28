@@ -38,7 +38,7 @@ export function NewProjectForm() {
   const [defaultBranch, setDefaultBranch] = useState("main");
   const [dockerfilePath, setDockerfilePath] = useState("Dockerfile");
   const [buildContext, setBuildContext] = useState(".");
-  const [buildMode, setBuildMode] = useState<"dockerfile" | "nixpacks">("dockerfile");
+  const [buildMode, setBuildMode] = useState<"dockerfile" | "railpack">("dockerfile");
   const [port, setPort] = useState(3000);
 
   useEffect(() => {
@@ -193,13 +193,13 @@ export function NewProjectForm() {
             <BuildModeButton active={buildMode === "dockerfile"} onClick={() => setBuildMode("dockerfile")}>
               Dockerfile
             </BuildModeButton>
-            <BuildModeButton active={buildMode === "nixpacks"} onClick={() => setBuildMode("nixpacks")}>
-              Nixpacks (auto-detect)
+            <BuildModeButton active={buildMode === "railpack"} onClick={() => setBuildMode("railpack")}>
+              Railpack (auto-detect)
             </BuildModeButton>
           </div>
           <p className="text-xs text-zinc-500">
-            {buildMode === "nixpacks"
-              ? "Nixpacks detects your stack and generates the image — no Dockerfile needed."
+            {buildMode === "railpack"
+              ? "Railpack detects your stack and builds the image — no Dockerfile needed."
               : "Build from a Dockerfile in your repo."}
           </p>
         </div>

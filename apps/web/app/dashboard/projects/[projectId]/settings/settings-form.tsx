@@ -7,7 +7,7 @@ import { Button, Input, Label } from "@korepush/ui";
 interface Initial {
   name: string;
   defaultBranch: string;
-  buildMode: "dockerfile" | "nixpacks";
+  buildMode: "dockerfile" | "railpack";
   dockerfilePath: string;
   buildContext: string;
   port: number;
@@ -70,11 +70,11 @@ export function ProjectSettingsForm({
           </button>
           <button
             type="button"
-            aria-pressed={state.buildMode === "nixpacks"}
-            onClick={() => setState({ ...state, buildMode: "nixpacks" })}
-            className={btn(state.buildMode === "nixpacks")}
+            aria-pressed={state.buildMode === "railpack"}
+            onClick={() => setState({ ...state, buildMode: "railpack" })}
+            className={btn(state.buildMode === "railpack")}
           >
-            Nixpacks
+            Railpack
           </button>
         </div>
       </Pair>
