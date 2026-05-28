@@ -78,8 +78,6 @@ export function buildJobManifest(args: BuildJobArgs) {
     args.commitSha
       ? `git checkout -q "${escapeShell(args.commitSha)}"`
       : `git checkout -q FETCH_HEAD`,
-    // Make the workspace readable by the rootless buildkit user (uid 1000).
-    `chown -R 1000:1000 ${WORKSPACE}`,
   ].join("\n");
 
   type InitContainer = {
@@ -154,8 +152,9 @@ export function buildJobManifest(args: BuildJobArgs) {
         metadata: { labels },
         spec: {
           restartPolicy: "Never",
-          // Rootless BuildKit needs to run as a regular user. The init container
-          // chowns the workspace volume so the builder can read the cloned repo.
+          // Rootless BuildKit runs as uid 1000. The init container runs as the
+          // same user, so the cloned files are already owned by 1000; fsGroup
+          // makes the shared workspace volume group-accessible to the builder.
           securityContext: {
             runAsUser: 1000,
             runAsGroup: 1000,
@@ -176,13 +175,14 @@ export function buildJobManifest(args: BuildJobArgs) {
                 { name: "BUILDKITD_FLAGS", value: "--oci-worker-no-process-sandbox" },
               ],
               securityContext: {
-                // BuildKit's rootless mode needs unconfined seccomp/apparmor
-                // to set up user namespaces. AppArmor is K8s-cluster-dependent
-                // and configured via the annotation below.
+                // Rootless BuildKit needs unconfined seccomp to set up user
+                // namespaces, and privilege escalation must stay enabled: the
+                // setuid newuidmap/newgidmap helpers map subordinate UIDs, and
+                // allowPrivilegeEscalation:false would set no_new_privs and
+                // break them ("newuidmap: Could not set caps").
                 seccompProfile: { type: "Unconfined" },
                 runAsUser: 1000,
                 runAsGroup: 1000,
-                allowPrivilegeEscalation: false,
               },
               volumeMounts: builderMounts,
             },
