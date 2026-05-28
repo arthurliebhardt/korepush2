@@ -54,4 +54,4 @@ export const CLUSTER_STATUSES = ["registered", "healthy", "degraded", "offline"]
 
 export const TEAM_ROLES = ["owner", "admin", "member"] as const;
 
-export const BUILD_MODES = ["dockerfile", "nixpacks"] as const;
+export const BUILD_MODES = ["dockerfile", "railpack"] as const;
