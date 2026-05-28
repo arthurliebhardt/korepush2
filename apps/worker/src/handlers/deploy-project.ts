@@ -158,7 +158,8 @@ export async function deployProject(payload: DeployProjectPayload): Promise<void
     labels: buildLabels,
     gitTokenSecretName: gitTokenSecretName ?? undefined,
     buildMode: deployment.buildMode as BuildMode,
-    nixpacksImage: env.nixpacksImage,
+    railpackImage: env.railpackImage,
+    railpackFrontendImage: env.railpackFrontendImage,
   });
   await createBuildJob(k, manifest);
   await trackResource(manifest as never, {
@@ -187,7 +188,7 @@ export async function deployProject(payload: DeployProjectPayload): Promise<void
     // The builder never starts when an init container fails, so its logs are
     // the only explanation. Only probe nixpacks-prep when it actually exists.
     const initContainerNames =
-      deployment.buildMode === "nixpacks" ? ["git-clone", "nixpacks-prep"] : ["git-clone"];
+      deployment.buildMode === "railpack" ? ["git-clone", "railpack-prep"] : ["git-clone"];
     for (const initContainer of initContainerNames) {
       try {
         const initLogs = await collectJobLogs(k, {
