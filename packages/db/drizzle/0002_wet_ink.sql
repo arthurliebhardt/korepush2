@@ -1,0 +1,1 @@
+ALTER TABLE "deployments" ADD COLUMN "build_mode" text DEFAULT 'dockerfile' NOT NULL;

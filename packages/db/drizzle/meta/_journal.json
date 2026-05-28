@@ -15,6 +15,13 @@
       "when": 1779911203975,
       "tag": "0001_open_magma",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1779988299509,
+      "tag": "0002_wet_ink",
+      "breakpoints": true
     }
   ]
 }

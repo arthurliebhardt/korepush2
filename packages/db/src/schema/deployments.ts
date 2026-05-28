@@ -33,6 +33,8 @@ export const deployments = pgTable(
     imageTag: text("image_tag"),
     imageDigest: text("image_digest"),
 
+    // dockerfile | nixpacks — snapshot of project.buildMode at deploy time.
+    buildMode: text("build_mode").notNull().default("dockerfile"),
     dockerfilePath: text("dockerfile_path").notNull(),
     buildContext: text("build_context").notNull(),
     buildTarget: text("build_target"),
