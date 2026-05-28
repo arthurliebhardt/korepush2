@@ -19,6 +19,11 @@ export const env = {
   // build of moby/buildkit, which works on default K3s without --privileged.
   buildImage:
     process.env.BUILD_IMAGE ?? "moby/buildkit:v0.18.2-rootless",
+  // Nixpacks image used to generate a Dockerfile for buildMode=nixpacks
+  // projects. Pinned build published by CI; overridable for air-gapped installs.
+  nixpacksImage:
+    process.env.NIXPACKS_IMAGE ??
+    "ghcr.io/arthurliebhardt/korepush2-nixpacks:latest",
   defaultIngressClass: process.env.INGRESS_CLASS ?? "traefik",
   certIssuer: process.env.CERT_ISSUER ?? null,
 };
