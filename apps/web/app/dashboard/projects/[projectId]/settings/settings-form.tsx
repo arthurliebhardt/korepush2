@@ -59,9 +59,10 @@ export function ProjectSettingsForm({
         />
       </Pair>
       <Pair label="Build">
-        <div className="flex gap-1">
+        <div className="flex gap-1" role="group" aria-label="Build mode">
           <button
             type="button"
+            aria-pressed={state.buildMode === "dockerfile"}
             onClick={() => setState({ ...state, buildMode: "dockerfile" })}
             className={btn(state.buildMode === "dockerfile")}
           >
@@ -69,6 +70,7 @@ export function ProjectSettingsForm({
           </button>
           <button
             type="button"
+            aria-pressed={state.buildMode === "nixpacks"}
             onClick={() => setState({ ...state, buildMode: "nixpacks" })}
             className={btn(state.buildMode === "nixpacks")}
           >

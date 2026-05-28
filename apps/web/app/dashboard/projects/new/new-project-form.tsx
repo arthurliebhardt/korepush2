@@ -188,8 +188,8 @@ export function NewProjectForm() {
         </div>
 
         <div className="space-y-1">
-          <Label htmlFor="buildMode">Build</Label>
-          <div className="flex gap-1" id="buildMode">
+          <Label>Build</Label>
+          <div className="flex gap-1" role="group" aria-label="Build mode">
             <BuildModeButton active={buildMode === "dockerfile"} onClick={() => setBuildMode("dockerfile")}>
               Dockerfile
             </BuildModeButton>
@@ -433,6 +433,7 @@ function BuildModeButton({
   return (
     <button
       type="button"
+      aria-pressed={active}
       onClick={onClick}
       className={
         "px-3 py-1.5 text-sm rounded-md border " +
