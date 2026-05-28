@@ -186,7 +186,7 @@ export async function deployProject(payload: DeployProjectPayload): Promise<void
 
   if (!jobStatus.done || jobStatus.failed > 0) {
     // The builder never starts when an init container fails, so its logs are
-    // the only explanation. Only probe nixpacks-prep when it actually exists.
+    // the only explanation. Only probe railpack-prep when it actually exists.
     const initContainerNames =
       deployment.buildMode === "railpack" ? ["git-clone", "railpack-prep"] : ["git-clone"];
     for (const initContainer of initContainerNames) {
