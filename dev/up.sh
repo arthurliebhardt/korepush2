@@ -364,6 +364,7 @@ cmd_up() {
   printf "    %shttp://localhost:%s%s\n" "$GREEN" "$PORT" "$OFF"
   echo
   echo "Useful:"
+  echo "  ./dev/up.sh reload web     # rebuild + restart just web (fast inner loop)"
   echo "  ./dev/up.sh logs    # tail web + worker logs"
   echo "  ./dev/up.sh down    # delete all korepush resources (keeps cluster)"
   echo "  ./dev/up.sh nuke    # also delete the k3d cluster"
@@ -373,6 +374,22 @@ cmd_up() {
 cmd_logs() {
   detect_runtime
   exec kubectl -n "$NS" logs -f -l 'app.kubernetes.io/name in (web,worker)' --prefix=true --max-log-requests=10 --tail=50
+}
+
+# Fast inner loop: rebuild a single app's image and restart its deployment.
+# Skips Postgres/registry/migrations — use for code-only changes.
+cmd_reload() {
+  local app="$1"
+  case "$app" in web|worker) ;; *) die "Usage: ./dev/up.sh reload <web|worker>" ;; esac
+  detect_runtime
+  local image="korepush-${app}:dev"
+  log "Rebuilding $image"
+  ( cd "$REPO_ROOT" && docker build -t "$image" -f "apps/${app}/Dockerfile" . ) >/dev/null
+  import_images
+  log "Restarting deployment/$app"
+  kubectl -n "$NS" rollout restart "deployment/$app" >/dev/null
+  kubectl -n "$NS" rollout status  "deployment/$app" --timeout=120s
+  ok "$app reloaded at http://localhost:${PORT}"
 }
 
 cmd_down() {
@@ -394,9 +411,10 @@ cmd_nuke() {
 
 cmd="${1:-up}"
 case "$cmd" in
-  up)   cmd_up ;;
-  logs) cmd_logs ;;
-  down) cmd_down ;;
-  nuke) cmd_nuke ;;
-  *) die "Unknown command: $cmd. Use: up | logs | down | nuke" ;;
+  up)     cmd_up ;;
+  reload) cmd_reload "${2:-}" ;;
+  logs)   cmd_logs ;;
+  down)   cmd_down ;;
+  nuke)   cmd_nuke ;;
+  *) die "Unknown command: $cmd. Use: up | reload <web|worker> | logs | down | nuke" ;;
 esac
