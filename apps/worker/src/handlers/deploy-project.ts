@@ -156,6 +156,8 @@ export async function deployProject(payload: DeployProjectPayload): Promise<void
     registryInsecure: env.registryUrl.includes(".svc.cluster.local"),
     labels: buildLabels,
     gitTokenSecretName: gitTokenSecretName ?? undefined,
+    buildMode: deployment.buildMode as "dockerfile" | "nixpacks",
+    nixpacksImage: env.nixpacksImage,
   });
   await createBuildJob(k, manifest);
   await trackResource(manifest as never, {
@@ -181,6 +183,20 @@ export async function deployProject(payload: DeployProjectPayload): Promise<void
   }
 
   if (!jobStatus.done || jobStatus.failed > 0) {
+    for (const initContainer of ["git-clone", "nixpacks-prep"]) {
+      try {
+        const initLogs = await collectJobLogs(k, {
+          namespace,
+          jobName,
+          containerName: initContainer,
+        });
+        if (initLogs) {
+          await appendBuildLogs(db, deployment.id, `[${initContainer}]\n${initLogs}`);
+        }
+      } catch (err) {
+        log.warn({ err: String(err), initContainer }, "failed to collect init logs");
+      }
+    }
     const reason = jobStatus.failureReason ?? "build failed";
     await failDeployment(deployment.id, "build.failed", reason);
     await deleteBuildJob(k, namespace, jobName).catch(() => undefined);
