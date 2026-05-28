@@ -38,6 +38,7 @@ export function NewProjectForm() {
   const [defaultBranch, setDefaultBranch] = useState("main");
   const [dockerfilePath, setDockerfilePath] = useState("Dockerfile");
   const [buildContext, setBuildContext] = useState(".");
+  const [buildMode, setBuildMode] = useState<"dockerfile" | "nixpacks">("dockerfile");
   const [port, setPort] = useState(3000);
 
   useEffect(() => {
@@ -117,6 +118,7 @@ export function NewProjectForm() {
         defaultBranch: finalBranch,
         dockerfilePath,
         buildContext,
+        buildMode,
         port: Number(port),
       }),
     });
@@ -184,19 +186,39 @@ export function NewProjectForm() {
             onChange={(v) => setPort(Number(v))}
           />
         </div>
-        <Field
-          name="dockerfilePath"
-          label="Dockerfile path"
-          value={dockerfilePath}
-          onChange={setDockerfilePath}
-          hint="Relative to repo root, e.g. apps/api/Dockerfile"
-        />
+
+        <div className="space-y-1">
+          <Label htmlFor="buildMode">Build</Label>
+          <div className="flex gap-1" id="buildMode">
+            <BuildModeButton active={buildMode === "dockerfile"} onClick={() => setBuildMode("dockerfile")}>
+              Dockerfile
+            </BuildModeButton>
+            <BuildModeButton active={buildMode === "nixpacks"} onClick={() => setBuildMode("nixpacks")}>
+              Nixpacks (auto-detect)
+            </BuildModeButton>
+          </div>
+          <p className="text-xs text-zinc-500">
+            {buildMode === "nixpacks"
+              ? "Nixpacks detects your stack and generates the image — no Dockerfile needed."
+              : "Build from a Dockerfile in your repo."}
+          </p>
+        </div>
+
+        {buildMode === "dockerfile" ? (
+          <Field
+            name="dockerfilePath"
+            label="Dockerfile path"
+            value={dockerfilePath}
+            onChange={setDockerfilePath}
+            hint="Relative to repo root, e.g. apps/api/Dockerfile"
+          />
+        ) : null}
         <Field
           name="buildContext"
           label="Build context"
           value={buildContext}
           onChange={setBuildContext}
-          hint="Directory passed to docker build."
+          hint="Directory passed to the build."
         />
       </div>
 
@@ -396,5 +418,30 @@ function Field({
       />
       {hint ? <p className="text-xs text-zinc-500">{hint}</p> : null}
     </div>
+  );
+}
+
+function BuildModeButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={
+        "px-3 py-1.5 text-sm rounded-md border " +
+        (active
+          ? "border-zinc-900 dark:border-zinc-100 bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+          : "border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-900")
+      }
+    >
+      {children}
+    </button>
   );
 }
