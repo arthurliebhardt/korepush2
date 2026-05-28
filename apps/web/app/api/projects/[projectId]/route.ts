@@ -13,7 +13,7 @@ const Update = z.object({
   dockerfilePath: z.string().min(1).optional(),
   buildContext: z.string().min(1).optional(),
   buildTarget: z.string().nullable().optional(),
-  buildMode: z.enum(["dockerfile", "nixpacks"]).optional(),
+  buildMode: z.enum(["dockerfile", "railpack"]).optional(),
   port: z.number().int().min(1).max(65535).optional(),
 });
 

@@ -22,7 +22,7 @@ const Create = z.object({
   dockerfilePath: z.string().min(1).default("Dockerfile"),
   buildContext: z.string().min(1).default("."),
   buildTarget: z.string().optional(),
-  buildMode: z.enum(["dockerfile", "nixpacks"]).default("dockerfile"),
+  buildMode: z.enum(["dockerfile", "railpack"]).default("dockerfile"),
   port: z.number().int().min(1).max(65535).default(3000),
   clusterId: z.string().optional(),
 });
