@@ -53,3 +53,6 @@ export const DOMAIN_TLS_STATUSES = ["pending", "issuing", "active", "failed", "d
 export const CLUSTER_STATUSES = ["registered", "healthy", "degraded", "offline"] as const;
 
 export const TEAM_ROLES = ["owner", "admin", "member"] as const;
+
+export const BUILD_MODES = ["dockerfile", "nixpacks"] as const;
+export type BuildMode = (typeof BUILD_MODES)[number];
