@@ -34,6 +34,7 @@ export async function POST(_: Request, { params }: Params) {
       imageRepository: deployment.imageRepository,
       imageTag: deployment.imageTag,
       imageDigest: deployment.imageDigest,
+      buildMode: deployment.buildMode,
       dockerfilePath: deployment.dockerfilePath,
       buildContext: deployment.buildContext,
       buildTarget: deployment.buildTarget,

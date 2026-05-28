@@ -15,6 +15,7 @@ import {
   serviceName,
   validateBuildContext,
   validateDockerfilePath,
+  type BuildMode,
   type DeployProjectPayload,
   type LabelInput,
 } from "@korepush/shared";
@@ -156,7 +157,7 @@ export async function deployProject(payload: DeployProjectPayload): Promise<void
     registryInsecure: env.registryUrl.includes(".svc.cluster.local"),
     labels: buildLabels,
     gitTokenSecretName: gitTokenSecretName ?? undefined,
-    buildMode: deployment.buildMode as "dockerfile" | "nixpacks",
+    buildMode: deployment.buildMode as BuildMode,
     nixpacksImage: env.nixpacksImage,
   });
   await createBuildJob(k, manifest);

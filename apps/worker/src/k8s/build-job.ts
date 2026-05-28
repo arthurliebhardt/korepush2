@@ -1,6 +1,6 @@
 import { posix } from "node:path";
 import type { Apis } from "./client.js";
-import { commonLabels, type LabelInput } from "@korepush/shared";
+import { commonLabels, type BuildMode, type LabelInput } from "@korepush/shared";
 import { isAlreadyExists, isNotFound } from "./apply.js";
 
 export interface BuildJobArgs {
@@ -30,7 +30,7 @@ export interface BuildJobArgs {
   gitTokenSecretName?: string;
   /** dockerfile | nixpacks. In nixpacks mode a prep init container generates
    * the Dockerfile and the user's dockerfilePath is ignored. */
-  buildMode: "dockerfile" | "nixpacks";
+  buildMode: BuildMode;
   /** Image containing the nixpacks binary; required when buildMode=nixpacks. */
   nixpacksImage?: string;
 }
